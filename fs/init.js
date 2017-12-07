@@ -1,27 +1,26 @@
 load('api_config.js');
 load('api_gpio.js');
 load('api_mqtt.js');
-load('api_sys.js');
-load('api_timer.js');
 
-// Helper C function get_led_gpio_pin() in src/main.c returns built-in LED GPIO
-let led = ffi('int get_led_gpio_pin()')();
+// pin IDs are stored as tags on the peripheral sensors
+let wbPin = 14;
+let wsPin = 12;
+let mbPin = 4;
+let msPin = 5;
+let topic = '/losant/' + Cfg.get('mqtt.client_id') + '/command';
 
-let getInfo = function() {
-    return JSON.stringify({data:{ total_ram: Sys.total_ram(), free_ram: Sys.free_ram() }});
-};
+GPIO.set_mode(wbPin, GPIO.MODE_OUTPUT);
+GPIO.set_mode(wsPin, GPIO.MODE_OUTPUT);
+GPIO.set_mode(mbPin, GPIO.MODE_OUTPUT);
+GPIO.set_mode(msPin, GPIO.MODE_OUTPUT);
 
-// Blink built-in LED every second
-GPIO.set_mode(led, GPIO.MODE_OUTPUT);
-Timer.set(1000 /* 1 sec */ , true /* repeat */ , function() {
-    let value = GPIO.toggle(led);
-    print(value ? 'Tick' : 'Tock', 'uptime:', Sys.uptime(), getInfo());
-}, null);
-
-// Publish to MQTT topic on a button press. Button is wired to GPIO pin 0
-GPIO.set_button_handler(0, GPIO.PULL_UP, GPIO.INT_EDGE_NEG, 200, function() {
-    let topic = '/losant/' + Cfg.get('device.id') + '/state';
-    let message = getInfo();
-    let ok = MQTT.pub(topic, message, 1);
-    print('Published:', ok ? 'yes' : 'no', 'topic:', topic, 'message:', message);
+// subscribe to the device commands
+MQTT.sub(topic, function(conn, topic, msg) {
+  let json = JSON.parse(msg);
+  if (json.name === 'ledOn' && json.payload && json.payload.pin) {
+    GPIO.write(json.payload.pin, 1);
+  }
+  if (json.name === 'ledOff' && json.payload && json.payload.pin) {
+    GPIO.write(json.payload.pin, 0);
+  }
 }, null);
